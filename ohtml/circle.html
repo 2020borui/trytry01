@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Tfl Bike Share Docking Stations Real Time Map with Popup</title>
+<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+    <script charset="utf-8" src="https://d3js.org/d3.v4.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+
+<style>
+
+    body { margin: 0; padding: 0; }
+
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+    
+#header-container {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    z-index: 1001;
+}
+
+    #title {
+        position: absolute;
+        background-color: transparent;
+        box-shadow:none;
+        border-radius: 3px;
+        padding: 15px;
+        margin-top: 22px;
+        margin-left: 15px;
+    }
+
+    #title h2 {
+        line-height: 24px;
+        margin: 0;
+        color: #006400;
+        font-weight: bold;
+    }
+
+    #title p.credit {
+       margin: 10px 0 0 0;
+       padding: 0;
+    }
+#legend-container {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.6);
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    z-index: 1002; 
+    pointer-events: auto;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 5px;
+    transition: all 0.3s ease-in-out;
+}
+    
+.legend-title {
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 8px;
+    font-size: 15px;
+}
+
+.legend-circle {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+}
+
+.legend-item.active {
+    font-weight: bold;
+    transform: scale(1.1);
+}
+
+.legend-item:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+
+.legend-circle.blue { background-color: #90CAF9; } 
+.legend-circle.green { background-color: #66BB6A; } 
+.legend-circle.pixel { background-color: #78C6C6; } 
+
+#reset-filter {
+    margin-top: 10px;
+    padding: 5px 10px;
+    cursor: pointer;
+    border: none;
+    background: #006400;
+    color: white;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: background 0.3s;
+}
+
+#reset-filter:hover {
+    background: #004d00;
+}
+#top10-chart {
+    width: 500px !important;  
+    height: 350px !important; 
+    display: block;
+    margin: auto;
+}
+    .mapboxgl-popup-content {
+    width: 280px;
+    max-height: 300px;  
+    background-color: rgba(255, 255, 255, 0.8);
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+    padding: 15px;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+#custom-close-btn {
+    font-size: 18px;
+    font-weight: bold;
+    color: #555;
+}
+#custom-close-btn:hover {
+    color: red;
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+
+<div id="title">
+        <h2>London Bicycle Station Map</h2>
+</div> 
+    
+    
+<div id="legend-container">
+<div class="legend-title">Station Usage Patterns</div>
+<div class="legend-item" data-filter="Weekend Dominant">
+    <div class="legend-circle green"></div> Weekend Dominant
+</div>
+<div class="legend-item" data-filter="Weekday Dominant">
+    <div class="legend-circle blue"></div> Weekday Dominant
+</div>
+<div class="legend-item" data-filter="No Significant Difference">
+    <div class="legend-circle pixel"></div> No Difference
+</div>
+    <button id="reset-filter">All</button>
+</div>
+
+
+ 
+
+<script>
+    
+
+mapboxgl.accessToken = 'pk.eyJ1Ijoid3d3MDYwIiwiYSI6ImNsZWNyZXU0OTAwbWEzb3RlaDF5bzBrcXUifQ.XpmvYQZRVRCNwe1mtcgYVg';
+
+
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/www060/cm7hnl72b00h801s22mix9d7o',
+    center: [-0.125, 51.505],
+    zoom: 12.05
+});
+map.addControl(new mapboxgl.NavigationControl());
+
+
+map.dragRotate.disable();
+map.touchZoomRotate.disableRotation();
+
+
+let activeFilter = null;
+let selectedDate = null;
+
+
+map.on('load', function () {
+    map.addSource('stations', {
+        type: 'vector',
+        url: 'mapbox://www060.7fozsyim'
+    });
+
+    map.addLayer({
+        id: 'StationCircles',
+        type: 'circle',
+        source: 'stations',
+        'source-layer': 'station_circles_corrected-dvn2cf',
+        paint: {
+            'circle-color': [
+                'case', 
+                ['>', ['get', 'weekday_mean'], ['get', 'weekend_mean']], '#6699CC',
+                ['<', ['get', 'weekday_mean'], ['get', 'weekend_mean']], '#5A9E4B',
+                '#78C6C6'
+            ],
+            'circle-opacity': 0.7,
+            'circle-radius': [
+                'interpolate', ['exponential', 1.5], ['zoom'],
+                12, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 2, 500, 8, 1000, 15, 2000, 30],
+                16, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 4, 500, 12, 1000, 22, 2000, 45],
+                20, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 6, 500, 18, 1000, 30, 2000, 60]
+            ]
+        }
+    });
+
+   
+    setupUIControls();
+});
+
+function setupUIControls() {
+    console.log("✅ UI");
+
+    const filterContainer = document.createElement('div');
+    filterContainer.id = "filter-container";
+    filterContainer.style.position = "absolute";
+    filterContainer.style.bottom = "20px";
+    filterContainer.style.left = "20px";
+    filterContainer.style.background = "rgba(255, 255, 255, 0.8)";
+    filterContainer.style.padding = "10px";
+    filterContainer.style.borderRadius = "8px";
+    filterContainer.style.boxShadow = "0 0 10px rgba(0,0,0,0.1)";
+    filterContainer.style.zIndex = "1001";
+
+    filterContainer.innerHTML = `
+        <label for="date-selector">Select Date:</label>
+        <select id="date-selector">
+            <option value="all" selected>All Dates</option> <!-- ✅ add date -->
+            <option value="2024-10-21">Monday</option>
+            <option value="2024-10-22">Tuesday</option>
+            <option value="2024-10-23">Wednesday</option>
+            <option value="2024-10-24">Thursday</option>
+            <option value="2024-10-25">Friday</option>
+            <option value="2024-10-26">Saturday</option>
+            <option value="2024-10-27">Sunday</option>
+        </select>
+        <div id="chart-container" style="display: none; margin-top: 10px;">
+            <canvas id="top10-chart" width="300" height="200"></canvas>
+        </div>
+    `;
+
+    document.body.appendChild(filterContainer);
+
+
+    document.getElementById("date-selector").addEventListener("change", function (e) {
+        selectedDate = e.target.value;
+
+        if (selectedDate === "all") {
+            resetMapToInitialState(); 
+        } else {
+            updateMap();
+            updateChart();
+        }
+    });
+
+    console.log("✅ UI ");
+}
+
+
+function updateMap() {
+    console.log(" updateMap()");
+
+    let filters = [];
+
+
+    if (selectedDate) {
+        let dateKey = `${selectedDate}_total`;
+        filters.push(['has', dateKey]); 
+    }
+
+    if (activeFilter) {
+        filters.push(activeFilter); 
+    }
+
+    let finalFilter = filters.length > 1 ? ['all', ...filters] : filters.length === 1 ? filters[0] : null;
+
+    console.log("🎯 filter situation:", finalFilter);
+    map.setFilter("StationCircles", finalFilter);
+
+    if (selectedDate) {
+        let dateKey = `${selectedDate}_total`;
+        map.setPaintProperty("StationCircles", "circle-radius", [
+            "interpolate",
+            ["linear"],
+            ["get", dateKey],
+            0, 2,
+            50, 8,
+            100, 15,
+            200, 30
+        ]);
+    }
+
+    highlightTopStations();
+}
+
+function highlightTopStations() {
+    if (!window.topStations || window.topStations.length === 0) {
+        console.log("🔹 10，unlight");
+        return;
+    }
+
+    console.log(" light 10 :", window.topStations);
+
+    map.setPaintProperty("StationCircles", "circle-opacity", [
+        "case",
+        ["in", ["get", "station name"], ["literal", window.topStations]], 1, 
+        0.3 
+    ]);
+}
+
+
+
+document.querySelectorAll(".legend-item").forEach(item => {
+    item.addEventListener("click", function(e) {
+        e.stopPropagation();  
+
+        console.log(" click legend:", this.getAttribute("data-filter"));
+
+        document.querySelectorAll(".legend-item, #reset-filter").forEach(el => el.classList.remove("active"));
+        this.classList.add("active");
+
+        let selectedFilter = this.getAttribute("data-filter");
+
+        if (selectedFilter === "Weekday Dominant") {
+            activeFilter = ['>', ['get', 'weekday_mean'], ['get', 'weekend_mean']];
+        } else if (selectedFilter === "Weekend Dominant") {
+            activeFilter = ['<', ['get', 'weekday_mean'], ['get', 'weekend_mean']];
+        } else if (selectedFilter === "No Significant Difference") {
+            activeFilter = ['==', ['get', 'weekday_mean'], ['get', 'weekend_mean']];
+        } else {
+            activeFilter = null; // 
+        }
+
+        console.log("sets activeFilter:", activeFilter);
+        updateMap();
+    });
+});
+
+function resetMapToInitialState() {
+    console.log("initial");
+
+    selectedDate = null;
+    window.topStations = [];
+
+    map.setFilter("StationCircles", null);
+
+    map.setPaintProperty("StationCircles", "circle-radius", [
+    'interpolate', ['exponential', 1.5], ['zoom'],
+    12, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 2, 500, 8, 1000, 15, 2000, 30],
+    16, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 4, 500, 12, 1000, 22, 2000, 45],
+    20, ['interpolate', ['linear'], ['get', 'weekly_total'], 0, 6, 500, 18, 1000, 30, 2000, 60]
+]);
+
+    map.setPaintProperty("StationCircles", "circle-opacity", 0.7);
+
+    document.getElementById("chart-container").style.display = "none";
+
+    console.log("get it");
+}
+
+function updateChart() {
+    if (!selectedDate) return;
+
+    const dateKey = `${selectedDate}_total`;
+
+    const features = map.queryRenderedFeatures({ layers: ['StationCircles'] });
+
+    if (!features.length) {
+        console.warn("warning!");
+        document.getElementById("chart-container").style.display = "none";
+        return;
+    }
+
+    const filteredData = features
+        .map(f => ({
+            station: f.properties["station name"],
+            count: f.properties[dateKey] || 0
+        }))
+        .filter(d => d.count > 0)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 10);
+
+    if (!filteredData.length) {
+        console.warn("warning!");
+        document.getElementById("chart-container").style.display = "none";
+        return;
+    }
+
+    window.topStations = filteredData.map(d => d.station);
+
+    console.log("save 10", window.topStations);
+
+    document.getElementById("chart-container").style.display = "block";
+
+    const labels = filteredData.map(d => d.station);
+    const data = filteredData.map(d => d.count);
+
+    if (window.chartInstance) {
+        window.chartInstance.destroy();
+    }
+
+    const ctx = document.getElementById('top10-chart').getContext('2d');
+    window.chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: "Frequency of Use",
+                data: data,
+                backgroundColor: "rgba(75, 192, 192, 0.5)"
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            scales: {
+                x: { beginAtZero: true },
+                y: { ticks: { autoSkip: false } }
+            }
+        }
+    });
+
+    console.log("load plot");
+
+    highlightTopStations();
+}
+
+document.getElementById("reset-filter").addEventListener("click", function() {
+    console.log("refresh");
+    
+    activeFilter = null;
+    updateMap();
+
+    document.querySelectorAll(".legend-item").forEach(el => el.classList.remove("active"));
+    this.classList.add("active");
+});
+
+
+
+
+var selectedStationId = null;
+var popup;
+    map.on('mouseenter', 'StationCircles', function (e) {
+        map.getCanvas().style.cursor = 'pointer';
+
+        var stationId = e.features[0].properties.station_id;
+
+        if (stationId !== selectedStationId) {
+            map.setPaintProperty('StationCircles', 'circle-stroke-width', [
+                'case',
+                ['==', ['get', 'station_id'], stationId], 3,0
+            ]);
+            map.setPaintProperty('StationCircles', 'circle-stroke-color', [
+                'case',
+                ['==', ['get', 'station_id'], stationId], '#FFFFFF', 
+                'transparent'
+            ]);
+        }
+    });
+    
+map.on('mouseleave', 'StationCircles', function () {
+    map.getCanvas().style.cursor = '';
+
+    map.setPaintProperty('StationCircles', 'circle-stroke-width', 0);
+    map.setPaintProperty('StationCircles', 'circle-stroke-color', 'transparent');
+});
+
+map.on('click', 'StationCircles', function (e) {
+    map.getCanvas().style.cursor = 'pointer';
+
+    var properties = e.features[0].properties;
+    var coordinates = e.features[0].geometry.coordinates.slice();
+
+    // daily message
+    var dates = ['2024-10-21', '2024-10-22', '2024-10-23', '2024-10-24', '2024-10-25', '2024-10-26', '2024-10-27'];
+    var weekdays = dates.map(date => {
+    return new Date(date).toLocaleDateString('en-US', { weekday: 'short' });});
+    var daily_totals = dates.map(date => properties[`${date}_total`] || 0);
+    var total_weekly_usage = daily_totals.reduce((sum, val) => sum + val, 0);
+    //popup
+    if (popup) {
+        popup.remove();
+    }
+    
+    popup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: [0, -10]
+    });
+    //chart container
+    var chartContainerId = `popupChart-${properties['station name'].replace(/\s/g, '')}`;
+    var chartHtml = `<canvas id="${chartContainerId}" width="260" height="150"></canvas>`;
+
+    var description = `
+        <div style="width: 270px;min-width: 200px;">
+            <button id="custom-close-btn" style="
+                position: absolute; 
+                top: 5px; 
+                right: 5px; 
+                background: #fff; 
+                border: none; 
+                cursor: pointer;
+                font-size: 16px;">×</button>
+            <h3>${properties['station name'] || 'Unknown Station'}</h3>
+            <p><strong>Total Weekly Usage:</strong> ${total_weekly_usage}</p>
+            <canvas id="${chartContainerId}" width="260" height="150"></canvas>
+        </div>
+    `;
+
+    popup.setLngLat(coordinates).setHTML(description).addTo(map);
+    
+    popup.on('close', function () {
+    document.getElementById('map').focus();
+    });
+    
+   setTimeout(() => {
+        let closeBtn = document.getElementById('custom-close-btn');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', function () {
+                popup.remove();
+                document.getElementById('map').focus();
+            });
+        }
+    }, 100);
+
+    
+
+
+    // popup and Chart
+    setTimeout(() => {
+        var ctx = document.getElementById(chartContainerId);
+        if (ctx) {
+            new Chart(ctx.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: weekdays,
+                    datasets: [
+                        {
+                            label: 'Departure Count', 
+                            data: dates.map(date => properties[`${date}_start`] || 0),
+                            borderColor: '#008000', 
+                            borderWidth: 2,
+                            fill: false
+                        },
+                        {
+                            label: 'Arrival Count',  
+                            data: dates.map(date => properties[`${date}_end`] || 0),
+                            borderColor: '#1E90FF',  
+                            borderWidth: 2,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            enabled: true 
+                        },
+                        datalabels: { display: false }
+                        }
+                    }
+            });
+        }
+    }, 300);
+});
+
+map.on('click', function (e) {
+    var features = map.queryRenderedFeatures(e.point, { layers: ['StationCircles'] });
+    if (!features.length && popup) {
+        popup.remove(); 
+    }
+});
+
+
+
+
+</script>
+
+</body>
+</html>

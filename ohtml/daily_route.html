@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Daily Bike Share Data</title>
+    <script src="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.js"></script>
+    <link href="https://api.tiles.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/noUiSlider/15.7.1/nouislider.min.css">
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+               #controls-container {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px; 
+        }
+
+        #time-slider-container, #legend {
+        position: relative; 
+        background: rgba(255, 255, 255, 0.2);
+        padding: 15px;
+        border-radius: 10px;
+        box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+        font-size: 14px;
+        color: #333;
+        text-align: left;
+        width: 150px;
+    }
+        #selected-day { font-size: 16px; font-weight: bold; margin-bottom: 10px; display: block; }
+           #title {
+        position: absolute;
+        background-color: transparent;
+        box-shadow:none;
+        border-radius: 3px;
+        padding: 15px;
+        margin-top: 22px;
+        margin-left: 15px;
+    }
+
+    #title h2 {
+        line-height: 24px;
+        margin: 0;
+        color: #006400;
+        font-weight: bold;
+    }
+
+    #title p.credit {
+       margin: 10px 0 0 0;
+       padding: 0;
+    }
+
+        .legend-title {
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+    
+        .legend-line {
+            display: inline-block;
+            width: 30px; 
+            height: 4px; 
+            margin-right: 8px;
+            border-radius: 2px;
+            vertical-align: middle;
+        }
+        .mapboxgl-popup-content {
+        font-size: 14px;
+        font-family: Arial, sans-serif;
+        background: rgba(255, 255, 255, 0.5)!important; 
+        border-radius: 8px; 
+        box-shadow: 2px 2px 10px rgba(0, 0, 0, 0.2); 
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="title">
+        <h2>Top 1000 Hot Bicycle Routes per Day</h2>
+    </div>
+<div id="controls-container">
+    <div id="time-slider-container">
+        <p id="slider-instruction">📅 Select a date to view bike usage</p>
+        <label id="selected-day">Monday</label>
+        <div id="time-slider"></div>
+    </div>
+    <div id="legend">
+        <div class="legend-title">Total Usage Count</div>
+        <div><span class="legend-line" style="background-color: #90CAF9;"></span> 0 - 2</div>
+        <div><span class="legend-line" style="background-color: #20B2AA;"></span> 2 - 5</div>
+        <div><span class="legend-line" style="background-color: #FFA500;"></span> 5 - 10</div>
+        <div><span class="legend-line" style="background-color: #FFA500;"></span> 10 - 40</div>
+    </div>
+</div>
+
+ 
+    <script>
+        mapboxgl.accessToken = 'pk.eyJ1Ijoid3d3MDYwIiwiYSI6ImNsZWNyZXU0OTAwbWEzb3RlaDF5bzBrcXUifQ.XpmvYQZRVRCNwe1mtcgYVg';
+        var map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/www060/cm7hnl72b00h801s22mix9d7o',
+            center: [-0.125, 51.505],
+            zoom: 12
+        });
+
+        const dataSources = [
+            { day: "Monday (2024.10.21)", url: "https://2020borui.github.io/0003/routes_2024-10-21.geojson" },
+            { day: "Tuesday (2024.10.22)", url: "https://2020borui.github.io/0003/routes_2024-10-22.geojson" },
+            { day: "Wednesday (2024.10.23)", url: "https://2020borui.github.io/0003/routes_2024-10-23.geojson" },
+            { day: "Thursday (2024.10.24)", url: "https://2020borui.github.io/0003/routes_2024-10-24.geojson" },
+            { day: "Friday (2024.10.25)", url: "https://2020borui.github.io/0003/routes_2024-10-25.geojson" },
+            { day: "Saturday (2024.10.26)", url: "https://2020borui.github.io/0003/routes_2024-10-26.geojson" },
+            { day: "Sunday (2024.10.27)", url: "https://2020borui.github.io/0003/routes_2024-10-27.geojson" }
+        ];
+
+        const timeSlider = document.getElementById("time-slider");
+        const selectedDayText = document.getElementById("selected-day");
+
+        noUiSlider.create(timeSlider, {
+            start: 0,
+            step: 1,
+            range: { min: 0, max: 6 },
+            format: { to: v => Math.round(v), from: v => parseInt(v) }
+        });
+
+        timeSlider.noUiSlider.on("update", function (values) {
+            let selectedIndex = parseInt(values[0]);
+            const selectedDay = dataSources[selectedIndex] || dataSources[0];
+
+            selectedDayText.textContent = selectedDay.day;
+
+            fetch(selectedDay.url)
+                .then(response => response.json())
+                .then(data => {
+                    if (map.getSource("bike_routes")) {
+                        map.getSource("bike_routes").setData(data);
+                    } else {
+                        map.addSource("bike_routes", { type: "geojson", data });
+                        map.addLayer({
+                            id: "bike_routes",
+                            type: "line",
+                            source: "bike_routes",
+                            paint: {
+                                "line-color": [
+                                    "interpolate", ["linear"], ["get", "count"],
+                                    0, "#D3D3D3", 2, "#90CAF9",
+                                    5, "#20B2AA", 10, "#FFA500",
+                                    40, "#FFA500"
+                                ],
+                                "line-width": [
+                                    "interpolate", ["linear"], ["zoom"],
+                                    10, 1.5, 14, 3, 18, 5
+                                ],
+                                 "line-opacity": [
+                                    "interpolate", ["linear"], ["get", "count"],
+                                    0, 0.0,
+                                    2, 0.3, 
+                                    5, 0.5, 
+                                    10, 1, 
+                                    40, 1     
+                                ]
+                            },
+                            'layout': {
+                                'line-sort-key': ['get', 'count']
+                            }
+                        });
+
+                        map.addLayer({
+                            id: "bike_routes_animated",
+                            type: "line",
+                            source: "bike_routes",
+                            paint: {
+                                'line-color': '#2A4A78',
+                                'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 14, 3, 18, 5],
+                                'line-opacity': 0.0,
+                                'line-dasharray': [2, 4]
+                            }
+                        });
+
+                        let step = 0;
+                        const dashPatterns = [[0, 4, 2, 4], [1, 3, 2, 4], [2, 2, 2, 4], [3, 1, 2, 4], [4, 0, 2, 4]];
+                        setInterval(() => {
+                            if (map.getLayer("bike_routes_animated")) {
+                                step = (step + 1) % dashPatterns.length;
+                                map.setPaintProperty('bike_routes_animated', 'line-dasharray', dashPatterns[step]);
+                            }
+                        }, 150);
+                    }
+                })
+                .catch(error => console.error("❌ Error loading GeoJSON:", error));
+        });
+
+let popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+map.on('mouseenter', 'bike_routes', function (e) {
+    map.getCanvas().style.cursor = 'pointer';
+    
+    let properties = e.features[0].properties;
+    let startStation = properties["Start station name"] || "Unknown";
+    let endStation = properties["End station name"] || "Unknown";
+    let count = properties.count || 0;
+    
+    let routeId = `${startStation}_${endStation}`;
+    console.log("Hovered routeId (Daily):", routeId);
+
+    if (routeId !== "Unknown_Unknown") {
+        map.setPaintProperty('bike_routes_animated', 'line-width', [
+            'case', ['==', ['concat', ['get', 'Start station name'], '_', ['get', 'End station name']], routeId], 3, 0.0
+        ]);
+        map.setPaintProperty('bike_routes_animated', 'line-color', [
+            'case', ['==', ['concat', ['get', 'Start station name'], '_', ['get', 'End station name']], routeId], '#006400', '#20B2AA'
+        ]);
+        map.setPaintProperty('bike_routes_animated', 'line-opacity', [
+            'case', ['==', ['concat', ['get', 'Start station name'], '_', ['get', 'End station name']], routeId], 0.8, 0.0
+        ]);
+    }
+
+    popup.setLngLat(e.lngLat)
+        .setHTML(`
+            <div style="font-size: 14px; font-family: Arial, sans-serif;">
+                <strong>🚲 Route Info</strong><br>
+                <strong>Start:</strong> ${startStation}<br>
+                <strong>End:</strong> ${endStation}<br>
+                <strong>Usage:</strong> ${count} trips
+            </div>
+        `)
+        .addTo(map);
+});
+
+              map.on('mouseleave', 'bike_routes', function () {
+                map.getCanvas().style.cursor = ''; 
+                popup.remove(); 
+
+                map.setPaintProperty('bike_routes_animated', 'line-opacity', 0.0);
+                map.setPaintProperty('bike_routes_animated', 'line-width', 0.0);
+            });
+
+
+    </script>
+</body>
+</html>

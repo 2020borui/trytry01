@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bike Share Visualization</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js'></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin: 0; padding: 0; display: flex; height: 100vh; font-family: 'Poppins', sans-serif; }
+        
+        #sidebar {
+            width: 400px;
+            background: rgba(30, 60, 70, 0.7);
+            backdrop-filter: blur(5px);
+            padding: 10px;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 4px 0 10px rgba(0, 0, 0, 0.2);
+           overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            transition: all 0.3s ease-in-out;
+        }
+          .sidebar ul li {
+            font-size: 12px!important; 
+            line-height: 1.6!important;
+            margin-bottom: 6px!important;
+        }
+        
+        #sidebar::-webkit-scrollbar {
+            width: 8px;
+            background: transparent;
+        }
+
+        #sidebar::-webkit-scrollbar-thumb {
+        background: transparent;
+        border-radius: 4px;
+        transition: background 0.3s ease-in-out;
+    }
+
+        #sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 4px;
+        }
+
+        #sidebar:hover::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.9);
+        }
+
+
+        #sidebar h2 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 22px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+      
+
+        .accordion {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            color: white;
+            margin-bottom: 15px;
+            font-size: 16px;
+            font-weight: 500;
+            width: 100%;
+            padding: 10px;
+            text-align: left;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s ease-in-out;
+        }
+        .accordion.active + div {
+            margin-top:-8px;
+        }
+        .accordion.active + div {
+        margin-bottom: 15px;
+    }
+        .accordion:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .accordion:after {
+            content: "⮟";
+            font-size: 14px;
+            transition: transform 0.3s;
+        }
+
+        .accordion.active:after {
+            transform: rotate(180deg);
+        }
+
+        .panel {
+            display: none;
+            padding: 10px;
+            margin-top: 5px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+        }
+
+        .panel p {
+            margin: 6px 0;
+            font-size: 14px;
+        }
+
+        .category button, .panel button {
+        width: 100%;
+        margin-top: 5px;
+        padding: 10px;
+        cursor: pointer;
+        border: none;
+        background: rgba(255, 255, 255, 0.4);
+        color: black;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease-in-out;
+    }
+
+    .category button:hover, .panel button:hover {
+        background: rgba(255, 255, 255, 0.6);
+        transform: scale(1.05);
+    }
+
+        #title-container {
+        background: rgba(255, 255, 255, 0.0);
+        padding: 15px;
+        border-radius: 6px;
+        text-align: center;
+        margin-bottom: 10px;
+    }
+
+    #title-container h2 {
+        margin-bottom: 8px;
+        font-size: 20px;
+        font-weight: bold;
+        color: white;
+    }
+        #intro {
+        padding: 0;
+        text-align: left;
+        background: none; 
+        border-radius: 6px;
+        font-size: 14px;
+        margin-bottom: 0;
+        display: block;
+    }
+        #intro a {
+            color: #ffffff; 
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        #intro a:hover {
+            color: #EEEEEE;
+        }
+        #map-container {
+            flex-grow: 1;
+            height: 100vh;
+            position: relative;
+        }
+
+        #iframe-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+    </style>
+</head>
+<body>
+     <div id="sidebar">
+        <div id="title-container">
+            <h2>London Bike-Sharing Trends: Stations & Routes</h2>
+            <div id="intro">
+                <p>This study explores bike-sharing usage in London from October 21–27, 2024, focusing on stations and routes. With clear weather and no major events, the data reflects weekday and weekend cycling patterns accurately.</p>   
+                <p>Data: <a href="https://cycling.data.tfl.gov.uk/">Cycling Data From TFL</a>.</p>
+            </div>
+        </div>
+
+        <button class="accordion">Bicycle Station Statistics</button>
+        <div class="panel">
+            <div id="intro-container">
+            <p>
+                This interactive map displays real-time bike station usage in London. You can:
+            </p>
+            <ul>
+                <li>🗺️ <b>Explore different stations</b> by clicking on them.</li>
+                <li>📊  <b>View statistics</b> weekly usage trends.</li>
+                <li>⏳  <b>Filter by time</b> </li>
+                <li>🎯 <b>Use the legend</b> to filter stations based on usage patterns.</li>
+                <li>🔄 <b>Reset filters</b> anytime by clicking "All".</li>
+            </ul>
+        </div>
+            <button onclick="switchPage('circle.html')">Station Distribution</button>
+        </div>
+
+        <button class="accordion">Bicycle Route Statistics</button>
+        <div class="panel">
+            <p>Explore the movement patterns of bikes across different routes. </p>
+            <ul>
+                <li>🗺️ <b>Explore different stations</b> by Hovering on them.</li>
+                <li>⏳  <b>Filter by time/counts </b> </li>
+            </ul>
+            <button onclick="switchPage('weekly_map.html')">Weekly Flow</button>
+            <button onclick="switchPage('daily_route.html')">Daily Flow</button>
+        </div>
+        <button class="accordion">Weekday vs. Weekend Trends</button>
+        <div class="panel">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+
+    <div id="map-container">
+        <div id="iframe-container">
+            <iframe id="mapFrame" src="circle.html"></iframe>
+        </div>
+    </div>
+
+    <script>
+        function switchPage(page) {
+            document.getElementById('mapFrame').src = page;
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            let accordions = document.querySelectorAll(".accordion");
+            accordions.forEach(acc => {
+                acc.addEventListener("click", function() {
+                    this.classList.toggle("active");
+                    let panel = this.nextElementSibling;
+                    if (panel.style.display === "block") {
+                        panel.style.display = "none";
+                    } else {
+                        panel.style.display = "block";
+                    }
+                });
+            });
+        });
+        const GITHUB_CSV_URL = "https://2020borui.github.io/0003/daily_stats.csv";
+        
+        function fetchAndRenderChart() {
+            fetch(GITHUB_CSV_URL)
+                .then(response => response.text())
+                .then(csvText => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        dynamicTyping: true,
+                        complete: function(results) {
+                            let data = results.data;
+                            
+                            let labels = data.map(row => row.day);
+                            let tripCounts = data.map(row => row.trip_count);
+                            let avgDurations = data.map(row => row.avg_duration_min);
+                            
+                            let ctx = document.getElementById('trendChart').getContext('2d');
+                            new Chart(ctx, {
+                                type: 'line',
+                                data: {
+                                    labels: labels,
+                                    datasets: [
+                                        {
+                                            label: 'Trip Count',
+                                            data: tripCounts,
+                                            borderColor: 'rgba(34, 139, 34, 1)',
+                                            backgroundColor: 'rgba(34, 139, 34, 0.2)',
+                                            fill: true,
+                                            yAxisID: 'y',
+                                        },
+                                        {
+                                            label: 'Avg Duration (min)',
+                                            data: avgDurations,
+                                            borderColor: 'rgba(54, 162, 235, 1)',
+                                            backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                                            fill: true,
+                                            yAxisID: 'y1',
+                                        }
+                                    ]
+                                },
+                                options: {
+                                    responsive: true,
+                                    maintainAspectRatio: false,
+                                    scales: {
+                                        y: {
+                                            type: 'linear',
+                                            position: 'left',
+                                            title: { display: true, text: 'Trip Count', color: 'rgba(255, 255, 255, 0.7)' },
+                                             grid: { color: 'rgba(255, 255, 255, 0.3)' },
+                                            ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                                        },
+                                         y1: {
+                                        type: 'linear',
+                                        position: 'right',
+                                        title: { display: true, text: 'Avg Duration (min)', color: 'rgba(255, 255, 255, 0.7)' },
+                                        grid: { color: 'rgba(255, 255, 255, 0.3)', drawOnChartArea: false },
+                                        ticks: { color: 'rgba(255, 255, 255, 0.7)' }
+                                    },
+                                x: {
+                                    ticks: { color: 'rgba(255, 255, 255, 0.7)' },
+                                    grid: { color: 'rgba(255, 255, 255, 0.3)' }
+                                }
+                            },
+                                   plugins: {
+                                    legend: {
+                                        labels: {
+                                            color: 'rgba(255, 255, 255, 0.7)', 
+                                            usePointStyle: true, 
+                                            font: {
+                                                size: 12 
+                                            },
+                                            generateLabels: function(chart) {
+                                                let labels = Chart.defaults.plugins.legend.labels.generateLabels(chart);
+                                                labels.forEach(label => {
+                                                    if (label.text === 'Avg Duration (min)') {
+                                                        label.fillStyle = 'rgba(54, 162, 235, 1)'; 
+                                                    } else if (label.text === 'Trip Count') {
+                                                        label.fillStyle = 'rgba(34, 139, 34, 1)'; 
+                                                    }
+                                                });
+                                                return labels;
+                                            }
+                                        }
+                                    }
+                                }
+                                }
+                            });
+                        }
+                    });
+                })
+                .catch(error => console.error('Error fetching CSV:', error));
+        }
+
+        document.addEventListener("DOMContentLoaded", fetchAndRenderChart);
+ </script>
+</body>
+</html>
